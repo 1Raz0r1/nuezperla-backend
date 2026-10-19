@@ -1,11 +1,8 @@
 const { Client } = require('pg');
 
 const client = new Client({
-    user: 'test_user',
-    host: 'localhost',
-    database: 'test_DB',
-    password: 'test_password',
-    port: 5432,
+    connectionString: 'postgresql://nuezperla_db_user:lxIhhjGfgIpMKnOOc29oOi668WkGT0WY@dpg-dba7jc0m7kps73fpr5u0-a.ohio-postgres.render.com/nuezperla_db',
+    ssl: { rejectUnauthorized: false }
 });
 
 const productos = [
