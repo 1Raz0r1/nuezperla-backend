@@ -152,6 +152,18 @@ app.get('/api/orders', async (req, res) => {
     }
 });
 
+// RUTA PARA ACTUALIZAR EL ESTADO DE UN PEDIDO
+app.patch('/api/orders/:id/status', async (req, res) => {
+    const { id } = req.params;
+    const { estado } = req.body; // "Entregado", "En camino", etc.
+    try {
+        await pool.query('UPDATE pedidos SET estado = $1 WHERE id = $2', [estado, id]);
+        res.json({ message: 'Estado actualizado' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al actualizar estado' });
+    }
+});
+
 const PORT = 3000;
 app.listen(PORT, () => {
     console.log(`🔥 Backend NuezPerla corriendo en http://localhost:${PORT}`);
