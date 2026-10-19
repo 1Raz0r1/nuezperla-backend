@@ -55,7 +55,32 @@ app.put('/api/products/:id', async (req, res) => {
         res.status(500).json({ error: 'Error al actualizar producto' });
     }
 });
+//Ruta de Delivery-orders
+app.post('/api/orders', async (req, res) => {
+    const { usuario_id, total, direccion, telefono_contacto, notas, items } = req.body;
+    
+    try {
+        // 1. Guardar el pedido principal
+        const pedidoResult = await pool.query(
+            'INSERT INTO pedidos (usuario_id, total, direccion, telefono_contacto, notas) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            [usuario_id, total, direccion, telefono_contacto, notas]
+        );
+        const pedidoId = pedidoResult.rows[0].id;
 
+        // 2. Guardar los productos del pedido
+        for (const item of items) {
+            await pool.query(
+                'INSERT INTO pedido_items (pedido_id, producto_id, cantidad, medida, precio_unitario) VALUES ($1, $2, $3, $4, $5)',
+                [pedidoId, item.producto_id, item.cantidad, item.medida, item.precio_unitario]
+            );
+        }
+
+        res.status(201).json({ message: 'Pedido creado', pedidoId });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al crear el pedido' });
+    }
+});
 // RUTA DE REGISTRO
 app.post('/api/auth/register', async (req, res) => {
     const { nombre, telefono, password } = req.body;
