@@ -124,6 +124,34 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+// OBTENER TODOS LOS PEDIDOS (Para el Admin)
+app.get('/api/orders', async (req, res) => {
+    try {
+        // Hacemos un JOIN para traer el nombre del usuario
+        const { rows } = await pool.query(`
+            SELECT p.id, p.total, p.direccion, p.telefono_contacto, p.notas, p.estado, p.fecha_creacion, u.nombre as cliente
+            FROM pedidos p
+            JOIN usuarios u ON p.usuario_id = u.id
+            ORDER BY p.fecha_creacion DESC
+        `);
+        
+        // Por cada pedido, buscamos sus productos
+        const pedidosCompletos = [];
+        for (const pedido of rows) {
+            const items = await pool.query(
+                'SELECT producto_id, cantidad, medida, precio_unitario FROM pedido_items WHERE pedido_id = $1',
+                [pedido.id]
+            );
+            pedidosCompletos.push({ ...pedido, items: items.rows });
+        }
+
+        res.json({ orders: pedidosCompletos });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al obtener pedidos' });
+    }
+});
+
 const PORT = 3000;
 app.listen(PORT, () => {
     console.log(`🔥 Backend NuezPerla corriendo en http://localhost:${PORT}`);
