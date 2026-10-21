@@ -201,18 +201,24 @@ app.post('/api/payments/create', async (req, res) => {
 
 // RUTA PARA RECIBIR NOTIFICACIONES DE MERCADO PAGO (WEBHOOK)
 app.post('/api/payments/webhook', async (req, res) => {
-    const { type, data } = req.body;
+    console.log("🔔 Webhook recibido:", JSON.stringify(req.body));
 
-    if (type === 'payment') {
+    // Mercado Pago puede enviar el tipo en el body o en la URL
+    const type = req.body.type || req.query.type;
+    const dataId = req.body.data?.id || req.query['data.id'];
+
+    if (type === 'payment' && dataId) {
         try {
             const client = new MercadoPagoConfig({ accessToken: 'APP_USR-41b72c4f-6c7d-4a52-8887-8f76525d9ba3' });
             const payment = new Payment(client);
             
             // Obtenemos los detalles del pago
-            const paymentInfo = await payment.get({ id: data.id });
+            const paymentInfo = await payment.get({ id: dataId });
+            console.log("💰 Estado del pago:", paymentInfo.status);
 
             if (paymentInfo.status === 'approved') {
                 const pedidoId = paymentInfo.external_reference;
+                console.log("✅ Pago aprobado para el pedido:", pedidoId);
 
                 // Buscamos los productos del pedido
                 const items = await pool.query(
@@ -240,11 +246,12 @@ app.post('/api/payments/webhook', async (req, res) => {
                     'UPDATE pedidos SET estado = $1 WHERE id = $2',
                     ['Pagado', pedidoId]
                 );
+                console.log("📦 Stock actualizado y pedido marcado como Pagado");
             }
 
             res.status(200).send('OK');
         } catch (error) {
-            console.error('Error en Webhook:', error);
+            console.error('❌ Error en Webhook:', error);
             res.status(500).send('Error');
         }
     } else {
