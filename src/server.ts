@@ -75,7 +75,7 @@ app.post('/api/orders', async (req, res) => {
             );
         }
 
-        res.status(201).json({ message: 'Pedido creado', pedidoId });
+        res.status(201).json({ message: 'Pedido creado', pedidoId: pedidoId.toStrig });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error al crear el pedido' });
