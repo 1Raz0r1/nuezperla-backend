@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 
 dotenv.config();
 
@@ -12,12 +12,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Requerido por Render
+    ssl: { rejectUnauthorized: false }
 });
-
 
 // 1. Obtener TODOS los productos (sin paginación, sin caché)
 app.get('/api/products', async (req, res) => {
@@ -56,7 +54,8 @@ app.put('/api/products/:id', async (req, res) => {
         res.status(500).json({ error: 'Error al actualizar producto' });
     }
 });
-//Ruta de Delivery-orders
+
+// Ruta de Delivery-orders
 app.post('/api/orders', async (req, res) => {
     const { usuario_id, total, direccion, telefono_contacto, notas, items } = req.body;
     
@@ -82,6 +81,7 @@ app.post('/api/orders', async (req, res) => {
         res.status(500).json({ error: 'Error al crear el pedido' });
     }
 });
+
 // RUTA DE REGISTRO
 app.post('/api/auth/register', async (req, res) => {
     const { nombre, telefono, password } = req.body;
@@ -128,7 +128,6 @@ app.post('/api/auth/login', async (req, res) => {
 // OBTENER TODOS LOS PEDIDOS (Para el Admin)
 app.get('/api/orders', async (req, res) => {
     try {
-        // Hacemos un JOIN para traer el nombre del usuario
         const { rows } = await pool.query(`
             SELECT p.id, p.total, p.direccion, p.telefono_contacto, p.notas, p.estado, p.fecha_creacion, u.nombre as cliente
             FROM pedidos p
@@ -136,7 +135,6 @@ app.get('/api/orders', async (req, res) => {
             ORDER BY p.fecha_creacion DESC
         `);
         
-        // Por cada pedido, buscamos sus productos
         const pedidosCompletos = [];
         for (const pedido of rows) {
             const items = await pool.query(
@@ -156,7 +154,7 @@ app.get('/api/orders', async (req, res) => {
 // RUTA PARA ACTUALIZAR EL ESTADO DE UN PEDIDO
 app.patch('/api/orders/:id/status', async (req, res) => {
     const { id } = req.params;
-    const { estado } = req.body; // "Entregado", "En camino", etc.
+    const { estado } = req.body;
     try {
         await pool.query('UPDATE pedidos SET estado = $1 WHERE id = $2', [estado, id]);
         res.json({ message: 'Estado actualizado' });
@@ -170,27 +168,27 @@ app.post('/api/payments/create', async (req, res) => {
     const { pedidoId, total, titulo } = req.body;
 
     try {
-        // Tu Access Token de prueba
         const client = new MercadoPagoConfig({ accessToken: 'APP_USR-3727210879871432-102103-1dece27c8700080d5ab10437a648b36a-3782298926' });
 
         const preference = new Preference(client);
         const result = await preference.create({
             body: {
+                external_reference: pedidoId.toString(), // <-- AGREGADO PARA EL WEBHOOK
                 items: [
                     {
                         id: pedidoId.toString(),
                         title: titulo || `Pedido NuezPerla #${pedidoId}`,
                         quantity: 1,
-                        unit_price: Number(total),
+                        unit_price: Number(Number(total).toFixed(2)),
                     }
                 ],
                 back_urls: {
-                    success: 'https://nuezperla.com/success',
-                    failure: 'https://nuezperla.com/failure',
-                    pending: 'https://nuezperla.com/pending',
+                    success: 'https://nuezperla-backend.onrender.com',
+                    failure: 'https://nuezperla-backend.onrender.com',
+                    pending: 'https://nuezperla-backend.onrender.com',
                 },
                 auto_return: 'approved',
-                notification_url: 'https://nuezperla-backend.onrender.com/api/payments/webhook'
+                notification_url: 'https://nuezperla-backend.onrender.com/api/payments/webhook' // <-- AGREGADO
             }
         });
 
@@ -201,8 +199,60 @@ app.post('/api/payments/create', async (req, res) => {
     }
 });
 
+// RUTA PARA RECIBIR NOTIFICACIONES DE MERCADO PAGO (WEBHOOK)
+app.post('/api/payments/webhook', async (req, res) => {
+    const { type, data } = req.body;
+
+    if (type === 'payment') {
+        try {
+            const client = new MercadoPagoConfig({ accessToken: 'APP_USR-41b72c4f-6c7d-4a52-8887-8f76525d9ba3' });
+            const payment = new Payment(client);
+            
+            // Obtenemos los detalles del pago
+            const paymentInfo = await payment.get({ id: data.id });
+
+            if (paymentInfo.status === 'approved') {
+                const pedidoId = paymentInfo.external_reference;
+
+                // Buscamos los productos del pedido
+                const items = await pool.query(
+                    'SELECT producto_id, cantidad, medida FROM pedido_items WHERE pedido_id = $1',
+                    [pedidoId]
+                );
+
+                for (const item of items.rows) {
+                    let factor = 1.0;
+                    if (item.medida === 'MEDIO') factor = 0.5;
+                    if (item.medida === 'CUARTO') factor = 0.25;
+                    if (item.medida === 'OCTAVO') factor = 0.125;
+
+                    const cantidadADescontar = factor * item.cantidad;
+
+                    // Restamos el stock
+                    await pool.query(
+                        'UPDATE products SET stock = stock - $1 WHERE id = $2',
+                        [cantidadADescontar, item.producto_id]
+                    );
+                }
+
+                // Marcamos el pedido como pagado
+                await pool.query(
+                    'UPDATE pedidos SET estado = $1 WHERE id = $2',
+                    ['Pagado', pedidoId]
+                );
+            }
+
+            res.status(200).send('OK');
+        } catch (error) {
+            console.error('Error en Webhook:', error);
+            res.status(500).send('Error');
+        }
+    } else {
+        res.status(200).send('OK');
+    }
+});
+
 const PORT = 3000;
 app.listen(PORT, () => {
     console.log(`🔥 Backend NuezPerla corriendo en http://localhost:${PORT}`);
 });
-
