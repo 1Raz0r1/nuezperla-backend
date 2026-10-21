@@ -171,7 +171,7 @@ app.post('/api/payments/create', async (req, res) => {
 
     try {
         // Tu Access Token de prueba
-        const client = new MercadoPagoConfig({ accessToken: 'TESTUSER3916978678108382627' });
+        const client = new MercadoPagoConfig({ accessToken: 'APP_USR-3727210879871432-102103-1dece27c8700080d5ab10437a648b36a-3782298926' });
 
         const preference = new Preference(client);
         const result = await preference.create({
