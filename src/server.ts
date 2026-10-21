@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { MercadoPagoConfig, Preference } from 'mercadopago';
 
 dotenv.config();
 
@@ -161,6 +162,42 @@ app.patch('/api/orders/:id/status', async (req, res) => {
         res.json({ message: 'Estado actualizado' });
     } catch (error) {
         res.status(500).json({ error: 'Error al actualizar estado' });
+    }
+});
+
+// RUTA PARA GENERAR EL LINK DE PAGO DE MERCADO PAGO
+app.post('/api/payments/create', async (req, res) => {
+    const { pedidoId, total, titulo } = req.body;
+
+    try {
+        // Tu Access Token de prueba
+        const client = new MercadoPagoConfig({ accessToken: 'APP_USR-41b72c4f-6c7d-4a52-8887-8f76525d9ba3' });
+
+        const preference = new Preference(client);
+        const result = await preference.create({
+            body: {
+                items: [
+                    {
+                        id: pedidoId.toString(),
+                        title: titulo || `Pedido NuezPerla #${pedidoId}`,
+                        quantity: 1,
+                        unit_price: Number(total),
+                    }
+                ],
+                back_urls: {
+                    success: 'https://nuezperla.com/success',
+                    failure: 'https://nuezperla.com/failure',
+                    pending: 'https://nuezperla.com/pending',
+                },
+                auto_return: 'approved',
+                notification_url: 'https://nuezperla-backend.onrender.com/api/payments/webhook'
+            }
+        });
+
+        res.json({ init_point: result.init_point });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al crear el pago' });
     }
 });
 
