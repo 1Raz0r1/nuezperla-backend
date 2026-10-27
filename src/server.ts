@@ -254,6 +254,48 @@ app.post('/api/payments/webhook', async (req, res) => {
         res.status(200).send('OK');
     }
 });
+// RUTA PARA REGISTRAR UN REPARTIDOR
+app.post('/api/repartidores/registro', async (req, res) => {
+    const { usuario_id, ine_frente, ine_reverso, selfie, vehiculo } = req.body;
+    try {
+        await pool.query(
+            'INSERT INTO repartidores (usuario_id, ine_frente, ine_reverso, selfie, vehiculo) VALUES ($1, $2, $3, $4, $5)',
+            [usuario_id, ine_frente, ine_reverso, selfie, vehiculo]
+        );
+        res.status(201).json({ message: 'Solicitud enviada. Espera la aprobación.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al registrar repartidor' });
+    }
+});
+
+// RUTA PARA OBTENER TODOS LOS REPARTIDORES (Para el Admin)
+app.get('/api/repartidores', async (req, res) => {
+    try {
+        const { rows } = await pool.query(`
+            SELECT r.id, r.ine_frente, r.ine_reverso, r.selfie, r.vehiculo, r.estado, u.nombre, u.telefono
+            FROM repartidores r
+            JOIN usuarios u ON r.usuario_id = u.id
+            ORDER BY r.fecha_registro DESC
+        `);
+        res.json({ repartidores: rows });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al obtener repartidores' });
+    }
+});
+
+// RUTA PARA APROBAR O RECHAZAR UN REPARTIDOR (Admin)
+app.patch('/api/repartidores/:id/estado', async (req, res) => {
+    const { id } = req.params;
+    const { estado } = req.body; // "Aprobado" o "Rechazado"
+    try {
+        await pool.query('UPDATE repartidores SET estado = $1 WHERE id = $2', [estado, id]);
+        res.json({ message: 'Estado actualizado' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al actualizar estado' });
+    }
+});
 
 const PORT = 3000;
 app.listen(PORT, () => {
