@@ -55,19 +55,17 @@ app.put('/api/products/:id', async (req, res) => {
     }
 });
 
-// Ruta de Delivery-orders
+// 4. Crear un pedido
 app.post('/api/orders', async (req, res) => {
     const { usuario_id, total, direccion, telefono_contacto, notas, items } = req.body;
     
     try {
-        // 1. Guardar el pedido principal
         const pedidoResult = await pool.query(
             'INSERT INTO pedidos (usuario_id, total, direccion, telefono_contacto, notas) VALUES ($1, $2, $3, $4, $5) RETURNING id',
             [usuario_id, total, direccion, telefono_contacto, notas]
         );
         const pedidoId = pedidoResult.rows[0].id;
 
-        // 2. Guardar los productos del pedido
         for (const item of items) {
             await pool.query(
                 'INSERT INTO pedido_items (pedido_id, producto_id, cantidad, medida, precio_unitario) VALUES ($1, $2, $3, $4, $5)',
@@ -75,14 +73,15 @@ app.post('/api/orders', async (req, res) => {
             );
         }
 
-        res.status(201).json({ message: 'Pedido creado', pedidoId: pedidoId.toStrig });
+        // Corregido el typo 'toStrig' por 'toString'
+        res.status(201).json({ message: 'Pedido creado', pedidoId: pedidoId.toString() });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error al crear el pedido' });
     }
 });
 
-// RUTA DE REGISTRO
+// 5. Registro de usuario
 app.post('/api/auth/register', async (req, res) => {
     const { nombre, telefono, password } = req.body;
     try {
@@ -97,7 +96,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 });
 
-// RUTA DE LOGIN
+// 6. Login de usuario
 app.post('/api/auth/login', async (req, res) => {
     const { telefono, password } = req.body;
     try {
@@ -125,7 +124,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// OBTENER TODOS LOS PEDIDOS (Para el Admin)
+// 7. Obtener todos los pedidos (Admin)
 app.get('/api/orders', async (req, res) => {
     try {
         const { rows } = await pool.query(`
@@ -151,7 +150,7 @@ app.get('/api/orders', async (req, res) => {
     }
 });
 
-// RUTA PARA ACTUALIZAR EL ESTADO DE UN PEDIDO
+// 8. Actualizar estado del pedido
 app.patch('/api/orders/:id/status', async (req, res) => {
     const { id } = req.params;
     const { estado } = req.body;
@@ -163,7 +162,7 @@ app.patch('/api/orders/:id/status', async (req, res) => {
     }
 });
 
-// RUTA PARA GENERAR EL LINK DE PAGO DE MERCADO PAGO
+// 9. Crear preferencia de pago
 app.post('/api/payments/create', async (req, res) => {
     const { pedidoId, total, titulo } = req.body;
 
@@ -173,7 +172,7 @@ app.post('/api/payments/create', async (req, res) => {
         const preference = new Preference(client);
         const result = await preference.create({
             body: {
-                external_reference: pedidoId.toString(), // <-- AGREGADO PARA EL WEBHOOK
+                external_reference: pedidoId.toString(),
                 items: [
                     {
                         id: pedidoId.toString(),
@@ -188,7 +187,7 @@ app.post('/api/payments/create', async (req, res) => {
                     pending: 'https://nuezperla-backend.onrender.com',
                 },
                 auto_return: 'approved',
-                notification_url: 'https://nuezperla-backend.onrender.com/api/payments/webhook' // <-- AGREGADO
+                notification_url: 'https://nuezperla-backend.onrender.com/api/payments/webhook'
             }
         });
 
@@ -199,7 +198,7 @@ app.post('/api/payments/create', async (req, res) => {
     }
 });
 
-// RUTA PARA RECIBIR NOTIFICACIONES DE MERCADO PAGO (WEBHOOK)
+// 10. Webhook de Mercado Pago
 app.post('/api/payments/webhook', async (req, res) => {
     console.log("🔔 Webhook recibido:", JSON.stringify(req.body));
 
@@ -208,7 +207,6 @@ app.post('/api/payments/webhook', async (req, res) => {
 
     if (type === 'payment' && dataId) {
         try {
-            // ⚠️ LEEMOS EL TOKEN DESDE LA VARIABLE DE ENTORNO
             const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || '' });
             const payment = new Payment(client);
             
@@ -254,7 +252,8 @@ app.post('/api/payments/webhook', async (req, res) => {
         res.status(200).send('OK');
     }
 });
-// RUTA PARA REGISTRAR UN REPARTIDOR
+
+// 11. Registrar un repartidor
 app.post('/api/repartidores/registro', async (req, res) => {
     const { usuario_id, ine_frente, ine_reverso, selfie, vehiculo } = req.body;
     try {
@@ -269,11 +268,11 @@ app.post('/api/repartidores/registro', async (req, res) => {
     }
 });
 
-// RUTA PARA OBTENER TODOS LOS REPARTIDORES (Para el Admin)
+// 12. Obtener todos los repartidores (Admin) - CON FECHA
 app.get('/api/repartidores', async (req, res) => {
     try {
         const { rows } = await pool.query(`
-            SELECT r.id, r.ine_frente, r.ine_reverso, r.selfie, r.vehiculo, r.estado, u.nombre, u.telefono
+            SELECT r.id, r.ine_frente, r.ine_reverso, r.selfie, r.vehiculo, r.estado, r.fecha_registro, u.nombre, u.telefono
             FROM repartidores r
             JOIN usuarios u ON r.usuario_id = u.id
             ORDER BY r.fecha_registro DESC
@@ -285,10 +284,10 @@ app.get('/api/repartidores', async (req, res) => {
     }
 });
 
-// RUTA PARA APROBAR O RECHAZAR UN REPARTIDOR (Admin)
+// 13. Aprobar o rechazar un repartidor (Admin)
 app.patch('/api/repartidores/:id/estado', async (req, res) => {
     const { id } = req.params;
-    const { estado } = req.body; // "Aprobado" o "Rechazado"
+    const { estado } = req.body;
     try {
         await pool.query('UPDATE repartidores SET estado = $1 WHERE id = $2', [estado, id]);
         res.json({ message: 'Estado actualizado' });
